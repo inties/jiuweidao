@@ -147,19 +147,34 @@ def fit_line(points, vertices, extension_factor=5):
     
     return fit_line_points, direction
 
+# 修改后的 open3d 可视化函数
 def visualize_open3d_with_fixed_z_ticks(mesh, slice_centroids, fit_line_points):
     axis_pcd = o3d.geometry.TriangleMesh.create_coordinate_frame(size=20.0, origin=[0, 0, 0])
     
-    slice_centroids_pcd = o3d.geometry.PointCloud()
-    slice_centroids_pcd.points = o3d.utility.Vector3dVector(slice_centroids)
-    slice_centroids_pcd.paint_uniform_color([1, 0, 0])
+    # 创建颜色列表，确保相邻切片颜色不同
+    colors = [
+        [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], 
+        [1, 0, 1], [0, 1, 1], [0.5, 0, 0], [0, 0.5, 0]
+    ]  # 可以根据需要添加更多颜色
+    
+    # 为每个切片创建单独的点云
+    centroid_clouds = []
+    for i, centroid in enumerate(slice_centroids):
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector([centroid])
+        color_idx = i % len(colors)  # 循环使用颜色
+        pcd.paint_uniform_color(colors[color_idx])
+        centroid_clouds.append(pcd)
 
     fit_line_pcd = o3d.geometry.PointCloud()
     fit_line_pcd.points = o3d.utility.Vector3dVector(fit_line_points)
     fit_line_pcd.paint_uniform_color([0, 0, 1])
 
-    o3d.visualization.draw_geometries([mesh, slice_centroids_pcd, fit_line_pcd, axis_pcd])
+    # 将所有几何体一起显示
+    geometries = [mesh] + centroid_clouds + [fit_line_pcd, axis_pcd]
+    o3d.visualization.draw_geometries(geometries)
 
+# 修改后的 plotly 可视化函数
 def visualize_plotly(vertices, slice_centroids, fit_line_points):
     model_points = go.Scatter3d(
         x=vertices[:, 0],
@@ -170,14 +185,19 @@ def visualize_plotly(vertices, slice_centroids, fit_line_points):
         name='Model Points'
     )
     
-    centroids = go.Scatter3d(
-        x=slice_centroids[:, 0],
-        y=slice_centroids[:, 1],
-        z=slice_centroids[:, 2],
-        mode='markers',
-        marker=dict(size=5, color='red'),
-        name='Slice Centroids'
-    )
+    # 为每个切片创建单独的散点图
+    centroid_traces = []
+    colors = ['red', 'green', 'blue', 'yellow', 'purple', 'cyan', 'darkred', 'darkgreen']  # 可以添加更多颜色
+    for i, centroid in enumerate(slice_centroids):
+        trace = go.Scatter3d(
+            x=[centroid[0]],
+            y=[centroid[1]],
+            z=[centroid[2]],
+            mode='markers',
+            marker=dict(size=5, color=colors[i % len(colors)]),
+            name=f'Slice {i}'
+        )
+        centroid_traces.append(trace)
     
     fitted_line = go.Scatter3d(
         x=fit_line_points[:, 0],
@@ -200,10 +220,11 @@ def visualize_plotly(vertices, slice_centroids, fit_line_points):
             zaxis=dict(tickvals=z_ticks, ticktext=[f"{z:.0f}" for z in z_ticks]),
             aspectmode='data'
         ),
-        title='3D Point Cloud Visualization'
+        title='3D Point Cloud Visualization',
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)  # 添加图例
     )
     
-    fig = go.Figure(data=[model_points, centroids, fitted_line], layout=layout)
+    fig = go.Figure(data=[model_points] + centroid_traces + [fitted_line], layout=layout)
     fig.show()
 
 def main():
@@ -223,7 +244,7 @@ def main():
 
     mesh = load_obj_model(args.file_path)
     vertices = np.asarray(mesh.vertices)
-    axis = np.array(  [ 0.45146372,0.1956906 ,0.89207486])
+    axis = np.array( [0,0,1])
     
     max_index = args.max_index if args.max_index is not None else args.num_slices - 1
     
@@ -253,7 +274,7 @@ def main():
 
     # 可视化
     if args.viz_method == 'open3d':
-        visualize_open3d_with_fixed_z_ticks(mesh, slice_centroids, fit_line_points)
+        visualize_open3d_with_fixed_z_ticks(mesh, slice_centroids,fit_line_points)
     elif args.viz_method == 'plotly':
         visualize_plotly(vertices, slice_centroids, fit_line_points)
 
